@@ -1,0 +1,63 @@
+/**
+ * Grid-Aware Admin Styles
+ */
+
+/* Admin page container */
+.grid-aware-admin {
+  max-width: 800px;
+}
+
+/* Tab styling */
+.grid-aware-admin .nav-tab-wrapper {
+  margin-bottom: 1em;
+}
+
+.grid-aware-admin .tab-content {
+  background: #fff;
+  padding: 20px;
+  border: 1px solid #ccc;
+  border-top: none;
+}
+
+/* Field styling */
+.grid-aware-admin .form-table th {
+  width: 200px;
+}
+
+/* Notice styling */
+.grid-aware-admin .notice {
+  margin: 15px 0;
+}
+
+/* Info box styling */
+.grid-aware-info-box {
+  background: #f8f8f8;
+  border-left: 4px solid #00a0d2;
+  padding: 10px 15px;
+  margin: 10px 0;
+  max-width: 600px;
+}
+
+/* Field group styling */
+.grid-aware-field-group {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 5px;
+}
+
+.grid-aware-option {
+  margin-right: 10px;
+}
+
+/* Tiny image test tool */
+.tiny-image-test-tool {
+  background: #f9f9f9;
+  border: 1px solid #ddd;
+  padding: 15px;
+  margin-top: 20px;
+}
+
+#tiny-image-result {
+  margin-top: 15px;
+}
