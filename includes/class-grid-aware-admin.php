@@ -50,8 +50,18 @@ class Grid_Aware_Admin {
         // Add admin bar menu item
         add_action('admin_bar_menu', array($this, 'add_admin_bar_menu'), 999);
 
-        // Add AJAX handler for tiny image testing
+        // Add dashboard widget
+        add_action('wp_dashboard_setup', array($this, 'add_dashboard_widget'));        // Add AJAX handler for tiny image testing
         add_action('wp_ajax_grid_aware_test_tiny_image', array($this, 'ajax_test_tiny_image'));
+
+        // Add AJAX handler for dashboard widget updates
+        add_action('wp_ajax_grid_aware_dashboard_update', array($this, 'ajax_dashboard_update'));
+
+        // Add AJAX handler for analytics data refresh
+        add_action('wp_ajax_grid_aware_analytics_data', array($this, 'ajax_analytics_data'));
+
+        // Add AJAX handler for analytics export
+        add_action('wp_ajax_grid_aware_export_analytics', array($this, 'ajax_export_analytics'));
     }
 
     /**
@@ -70,17 +80,15 @@ class Grid_Aware_Admin {
             100                            // Position
         );
 
-        // You could also add sub-menu items like this if needed
-        /*
+        // Add analytics submenu
         add_submenu_page(
             'grid-aware-settings',       // Parent slug
-            'Grid-Aware Advanced',       // Page title
-            'Advanced Settings',         // Menu title
+            'Carbon Analytics',          // Page title
+            'Analytics',                 // Menu title
             'manage_options',            // Capability
-            'grid-aware-advanced',       // Menu slug
-            array($this, 'render_advanced_page') // Callback
+            'grid-aware-analytics',      // Menu slug
+            array($this, 'render_analytics_page') // Callback
         );
-        */
     }
 
     /**
@@ -201,6 +209,208 @@ class Grid_Aware_Admin {
     }
 
     /**
+     * Add dashboard widget
+     */
+    public function add_dashboard_widget() {
+        wp_add_dashboard_widget(
+            'grid_aware_dashboard_widget',
+            '<span class="dashicons dashicons-admin-site-alt3" style="color: #0f834d;"></span> Carbon Footprint Monitor',
+            array($this, 'render_dashboard_widget')
+        );
+    }
+
+    /**
+     * Render dashboard widget
+     */
+    public function render_dashboard_widget() {
+        // Get current grid data
+        if (class_exists('Grid_Aware_Server')) {
+            $server = Grid_Aware_Server::get_instance();
+            $mode = $server->get_current_mode();
+            $intensity = $server->get_current_intensity();
+        } else {
+            $mode = 'unknown';
+            $intensity = 0;
+        }
+
+        // Get analytics summary if available
+        $analytics_summary = array();
+        if (class_exists('Grid_Aware_Analytics')) {
+            $analytics = Grid_Aware_Analytics::get_instance();
+
+            // Check if the generate_report method exists before calling it
+            if (method_exists($analytics, 'generate_report')) {
+                $report = $analytics->generate_report('24hours', 'array');
+                $analytics_summary = $report['summary'];
+            }
+        }
+
+        ?>
+        <div class="grid-aware-dashboard-widget">
+            <div class="current-status">
+                <div class="status-item">
+                    <div class="status-label">Current Mode</div>
+                    <div class="status-value mode-<?php echo esc_attr($mode); ?>">
+                        <?php echo esc_html(ucfirst($mode)); ?>
+                    </div>
+                </div>
+
+                <?php if ($intensity > 0): ?>
+                <div class="status-item">
+                    <div class="status-label">Carbon Intensity</div>
+                    <div class="status-value intensity-<?php echo $intensity > 400 ? 'high' : ($intensity > 200 ? 'medium' : 'low'); ?>">
+                        <?php echo esc_html(number_format($intensity, 1)); ?> g/kWh
+                    </div>
+                </div>
+                <?php endif; ?>
+            </div>
+
+            <?php if (!empty($analytics_summary) && $analytics_summary['total_page_views'] > 0): ?>
+            <div class="today-summary">
+                <h4>Last 24 Hours</h4>
+                <div class="summary-grid">
+                    <div class="summary-item">
+                        <div class="summary-number"><?php echo number_format($analytics_summary['total_page_views']); ?></div>
+                        <div class="summary-label">Page Views</div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="summary-number"><?php echo number_format($analytics_summary['total_carbon_g'], 3); ?>g</div>
+                        <div class="summary-label">CO₂ Footprint</div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="summary-number"><?php echo number_format($analytics_summary['total_savings_g'], 3); ?>g</div>
+                        <div class="summary-label">CO₂ Saved</div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="summary-number"><?php echo $analytics_summary['savings_percentage']; ?>%</div>
+                        <div class="summary-label">Reduction</div>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
+
+            <div class="widget-actions">
+                <a href="<?php echo admin_url('admin.php?page=grid-aware-analytics'); ?>" class="button button-primary">
+                    View Full Analytics
+                </a>
+                <a href="<?php echo admin_url('admin.php?page=grid-aware-settings'); ?>" class="button">
+                    Settings
+                </a>
+            </div>
+        </div>
+
+        <style>
+        .grid-aware-dashboard-widget {
+            font-size: 13px;
+        }
+
+        .current-status {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #f1f1f1;
+        }
+
+        .status-item {
+            flex: 1;
+        }
+
+        .status-label {
+            font-size: 11px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 5px;
+        }
+
+        .status-value {
+            font-size: 16px;
+            font-weight: 600;
+            padding: 4px 8px;
+            border-radius: 4px;
+            text-align: center;
+        }
+
+        .mode-standard {
+            background: rgba(102, 102, 102, 0.1);
+            color: #666;
+        }
+
+        .mode-eco {
+            background: rgba(255, 158, 1, 0.1);
+            color: #ff9e01;
+        }
+
+        .mode-super-eco {
+            background: rgba(179, 45, 46, 0.1);
+            color: #b32d2e;
+        }
+
+        .intensity-low {
+            background: rgba(15, 131, 77, 0.1);
+            color: #0f834d;
+        }
+
+        .intensity-medium {
+            background: rgba(255, 158, 1, 0.1);
+            color: #ff9e01;
+        }
+
+        .intensity-high {
+            background: rgba(179, 45, 46, 0.1);
+            color: #b32d2e;
+        }
+
+        .today-summary h4 {
+            margin: 0 0 10px 0;
+            font-size: 12px;
+            color: #333;
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .summary-item {
+            text-align: center;
+            padding: 8px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+
+        .summary-number {
+            font-size: 14px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .summary-label {
+            font-size: 10px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 2px;
+        }
+
+        .widget-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .widget-actions .button {
+            flex: 1;
+            justify-content: center;
+            text-align: center;
+        }
+        </style>
+        <?php
+    }
+
+    /**
      * AJAX handler for testing tiny image generation
      */
     public function ajax_test_tiny_image() {
@@ -245,6 +455,147 @@ class Grid_Aware_Admin {
             'tiny_size' => $tiny_size,
             'size_reduction' => $size_reduction
         ));
+    }    /**
+     * AJAX handler for dashboard widget updates
+     */
+    public function ajax_dashboard_update() {
+        check_ajax_referer('grid_aware_dashboard', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Permission denied');
+        }
+
+        // Get updated widget content
+        ob_start();
+        $this->render_dashboard_widget();
+        $html = ob_get_clean();
+
+        wp_send_json_success(array('html' => $html));
+    }
+
+    /**
+     * AJAX handler for analytics data refresh
+     */
+    public function ajax_analytics_data() {
+        check_ajax_referer('grid_aware_analytics', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Permission denied');
+        }
+
+        if (!class_exists('Grid_Aware_Analytics')) {
+            wp_send_json_error('Analytics module not available');
+        }
+
+        $analytics = Grid_Aware_Analytics::get_instance();
+        $period = sanitize_text_field($_POST['period'] ?? '7days');
+        $report = $analytics->generate_report($period, 'array');
+
+        // Get formatted timeline data for charts
+        $timeline_data = $this->format_timeline_data_for_charts($report['timeline'], $period);
+
+        // Include both summary data and timeline data for charts
+        $response_data = array(
+            'summary' => $report['summary'],
+            'timeline' => $timeline_data,
+            'insights' => $report['insights'],
+            'recommendations' => $report['recommendations']
+        );
+
+        wp_send_json_success($response_data);
+    }
+
+    /**
+     * AJAX handler for analytics export
+     */
+    public function ajax_export_analytics() {
+        check_ajax_referer('grid_aware_analytics', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Permission denied');
+        }
+
+        if (!class_exists('Grid_Aware_Analytics')) {
+            wp_send_json_error('Analytics module not available');
+        }
+
+        $analytics = Grid_Aware_Analytics::get_instance();
+        $period = sanitize_text_field($_POST['period'] ?? '30days');
+        $format = sanitize_text_field($_POST['format'] ?? 'csv');
+
+        $report = $analytics->generate_report($period, $format);
+
+        $filename = "carbon-footprint-report-{$period}-" . date('Y-m-d');
+
+        if ($format === 'csv') {
+            // Create temporary file for download
+            $upload_dir = wp_upload_dir();
+            $file_path = $upload_dir['path'] . '/' . $filename . '.csv';
+            file_put_contents($file_path, $report);
+
+            $download_url = $upload_dir['url'] . '/' . $filename . '.csv';
+
+            wp_send_json_success(array(
+                'download_url' => $download_url,
+                'filename' => $filename . '.csv'
+            ));
+        } elseif ($format === 'json') {
+            // Create temporary file for download
+            $upload_dir = wp_upload_dir();
+            $file_path = $upload_dir['path'] . '/' . $filename . '.json';
+            file_put_contents($file_path, $report);
+
+            $download_url = $upload_dir['url'] . '/' . $filename . '.json';
+
+            wp_send_json_success(array(
+                'download_url' => $download_url,
+                'filename' => $filename . '.json'
+            ));
+        }
+
+        wp_send_json_error('Invalid format');
+    }
+
+    /**
+     * Format timeline data for Chart.js (used by AJAX handler)
+     */
+    private function format_timeline_data_for_charts($timeline_data, $period) {
+        if (empty($timeline_data)) {
+            return array();
+        }
+
+        $labels = array();
+        $carbon_intensity = array();
+        $carbon_footprint = array();
+        $carbon_saved = array();
+        $page_views = array();
+
+        foreach ($timeline_data as $data_point) {
+            // Format timestamp for chart labels
+            $timestamp = $data_point['timestamp'];
+            if ($period === '24hours') {
+                $labels[] = date('H:i', strtotime($timestamp));
+            } else if ($period === '7days') {
+                $labels[] = date('M j', strtotime($timestamp));
+            } else {
+                $labels[] = date('M j', strtotime($timestamp));
+            }
+
+            $carbon_intensity[] = floatval($data_point['avg_carbon_intensity']);
+            $carbon_footprint[] = floatval($data_point['estimated_carbon_g']);
+            $carbon_saved[] = floatval($data_point['savings_carbon_g']);
+            $page_views[] = intval($data_point['page_views']);
+        }
+
+        return array(
+            'labels' => $labels,
+            'datasets' => array(
+                'carbon_intensity' => $carbon_intensity,
+                'carbon_footprint' => $carbon_footprint,
+                'carbon_saved' => $carbon_saved,
+                'page_views' => $page_views
+            )
+        );
     }
 
     /**
@@ -424,18 +775,16 @@ class Grid_Aware_Admin {
         $settings_link = '<a href="admin.php?page=grid-aware-settings">' . __('Settings') . '</a>';
         array_unshift($links, $settings_link);
         return $links;
-    }
-
-    /**
+    }    /**
      * Enqueue admin scripts and styles
      */
     public function enqueue_admin_assets($hook) {
-        // Only load on our settings page
-        if ($hook != 'toplevel_page_grid-aware-settings') {
+        // Load on our settings page and analytics page
+        if ($hook != 'toplevel_page_grid-aware-settings' && $hook != 'grid-aware_page_grid-aware-analytics') {
             return;
         }
 
-        // Add admin CSS if needed
+        // Add admin CSS
         wp_enqueue_style(
             'grid-aware-admin',
             GRID_AWARE_URL . 'assets/css/admin.css',
@@ -443,13 +792,129 @@ class Grid_Aware_Admin {
             GRID_AWARE_VERSION
         );
 
-        // Add admin JS if needed
+        // Add admin JS
         wp_enqueue_script(
             'grid-aware-admin',
             GRID_AWARE_URL . 'assets/js/admin.js',
             array('jquery'),
             GRID_AWARE_VERSION,
             true
+        );
+
+        // Load Chart.js library for analytics page
+        if ($hook == 'grid-aware_page_grid-aware-analytics') {
+            wp_enqueue_script(
+                'chartjs',
+                'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.min.js',
+                array(),
+                '4.4.0',
+                true
+            );
+
+            // Get timeline data for charting
+            $timeline_data = $this->get_timeline_data_for_charts();
+
+            // Pass data to JavaScript
+            wp_localize_script('grid-aware-admin', 'gridAwareChartData', array(
+                'timeline' => $timeline_data,
+                'nonce' => wp_create_nonce('grid_aware_analytics')
+            ));
+        }
+    }
+
+    /**
+     * Get timeline data formatted for Chart.js
+     */
+    private function get_timeline_data_for_charts() {
+
+                // Debug: Check what's happening
+        error_log('Grid_Aware_Admin: Checking for Grid_Aware_Analytics class');
+
+        if (!class_exists('Grid_Aware_Analytics')) {
+            error_log('Grid_Aware_Admin: Grid_Aware_Analytics class does not exist');
+            return array();
+        }
+
+        error_log('Grid_Aware_Admin: Grid_Aware_Analytics class exists, getting instance');
+
+        try {
+            $analytics = Grid_Aware_Analytics::get_instance();
+            error_log('Grid_Aware_Admin: Got analytics instance: ' . get_class($analytics));
+        } catch (Exception $e) {
+            error_log('Grid_Aware_Admin: Error getting analytics instance: ' . $e->getMessage());
+            return array();
+        }
+
+        $current_period = isset($_GET['period']) ? sanitize_text_field($_GET['period']) : '7days';
+
+        if (!method_exists($analytics, 'generate_report')) {
+            error_log('Grid_Aware_Admin: generate_report method does not exist on ' . get_class($analytics));
+            return array();
+        }
+
+        error_log('Grid_Aware_Admin: generate_report method exists, calling it');
+
+        try {
+            $report = $analytics->generate_report($current_period, 'array');
+            error_log('Grid_Aware_Admin: Successfully generated report');
+        } catch (Exception $e) {
+            error_log('Grid_Aware_Admin: Error generating report: ' . $e->getMessage());
+            return array();
+        }
+
+        if (empty($report['timeline'])) {
+            error_log('Grid_Aware_Admin: Report timeline is empty');
+            return array();
+        }
+
+        if (!class_exists('Grid_Aware_Analytics')) {
+            return array();
+        }
+
+        $analytics = Grid_Aware_Analytics::get_instance();
+        $current_period = isset($_GET['period']) ? sanitize_text_field($_GET['period']) : '7days';
+
+        if (!method_exists($analytics, 'generate_report')) {
+            return array();
+        }
+
+        $report = $analytics->generate_report($current_period, 'array');
+
+        if (empty($report['timeline'])) {
+            return array();
+        }
+
+        $labels = array();
+        $carbon_intensity = array();
+        $carbon_footprint = array();
+        $carbon_saved = array();
+        $page_views = array();
+
+        foreach ($report['timeline'] as $data_point) {
+            // Format timestamp for chart labels
+            $timestamp = $data_point['timestamp'];
+            if ($current_period === '24hours') {
+                $labels[] = date('H:i', strtotime($timestamp));
+            } else if ($current_period === '7days') {
+                $labels[] = date('M j', strtotime($timestamp));
+            } else {
+                $labels[] = date('M j', strtotime($timestamp));
+            }
+
+            $carbon_intensity[] = floatval($data_point['avg_carbon_intensity']);
+            $carbon_footprint[] = floatval($data_point['estimated_carbon_g']);
+            $carbon_saved[] = floatval($data_point['savings_carbon_g']);
+            $page_views[] = intval($data_point['page_views']);
+        }
+
+        return array(
+            'labels' => $labels,
+            'datasets' => array(
+                'carbon_intensity' => $carbon_intensity,
+                'carbon_footprint' => $carbon_footprint,
+                'carbon_saved' => $carbon_saved,
+                'page_views' => $page_views
+            )
         );
     }
 
@@ -596,6 +1061,7 @@ class Grid_Aware_Admin {
             'grid_aware_advanced_options',
             'grid_aware_advanced_section'
         );
+
         // Add debug settings section
         add_settings_section(
             'grid_aware_debug_section',
@@ -662,6 +1128,7 @@ class Grid_Aware_Admin {
                 <a href="#api-settings" class="nav-tab nav-tab-active">API Settings</a>
                 <a href="#basic-settings" class="nav-tab">Basic Settings</a>
                 <a href="#advanced-settings" class="nav-tab">Advanced Settings</a>
+                <a href="#analytics" class="nav-tab">Carbon Analytics</a>
                 <a href="#debug-settings" class="nav-tab">Debug & Preview</a>
             </h2>
 
@@ -693,6 +1160,10 @@ class Grid_Aware_Admin {
                     submit_button('Save Advanced Settings');
                     ?>
                 </form>
+            </div>
+
+            <div id="analytics" class="tab-content" style="display: none;">
+                <?php $this->render_analytics_dashboard(); ?>
             </div>
 
             <div id="debug-settings" class="tab-content" style="display: none;">
@@ -929,4 +1400,264 @@ class Grid_Aware_Admin {
         <p class="description">Temporarily force a specific mode for testing. Only affects admin users.</p>
         <?php
     }
+
+    /**
+     * Render the analytics dashboard page
+     */
+    public function render_analytics_page() {
+        // Check if analytics class exists
+        if (!class_exists('Grid_Aware_Analytics')) {
+            echo '<div class="notice notice-error"><p>Analytics module not available.</p></div>';
+            return;
+        }
+
+        $analytics = Grid_Aware_Analytics::get_instance();
+
+        // Check if the generate_report method exists
+        if (!method_exists($analytics, 'generate_report')) {
+            echo '<div class="notice notice-error"><p>Analytics generate_report method not available.</p></div>';
+            return;
+        }
+
+        // Get current period from URL or default to 7 days
+        $current_period = isset($_GET['period']) ? sanitize_text_field($_GET['period']) : '7days';
+
+        // Get analytics data
+        $report = $analytics->generate_report($current_period, 'array');
+
+        ?>
+        <div class="wrap grid-aware-analytics">
+            <h1>
+                <span class="dashicons dashicons-chart-area" style="color: #0f834d;"></span>
+                Carbon Footprint Analytics
+            </h1>
+
+            <div class="grid-aware-analytics-header">
+                <div class="period-selector">
+                    <label for="analytics-period">Time Period:</label>
+                    <select id="analytics-period" onchange="window.location.href='<?php echo admin_url('admin.php?page=grid-aware-analytics&period='); ?>' + this.value">
+                        <option value="24hours" <?php selected($current_period, '24hours'); ?>>Last 24 Hours</option>
+                        <option value="7days" <?php selected($current_period, '7days'); ?>>Last 7 Days</option>
+                        <option value="30days" <?php selected($current_period, '30days'); ?>>Last 30 Days</option>
+                        <option value="12months" <?php selected($current_period, '12months'); ?>>Last 12 Months</option>
+                    </select>
+                </div>
+
+                <div class="export-buttons">
+                    <button type="button" class="button" onclick="exportAnalytics('csv')">
+                        <span class="dashicons dashicons-download"></span> Export CSV
+                    </button>
+                    <button type="button" class="button" onclick="exportAnalytics('json')">
+                        <span class="dashicons dashicons-download"></span> Export JSON
+                    </button>
+                </div>
+            </div>
+
+            <!-- Summary Cards -->
+            <div class="analytics-summary-cards">
+                <div class="summary-card carbon-footprint">
+                    <div class="card-icon">
+                        <span class="dashicons dashicons-admin-site-alt3"></span>
+                    </div>
+                    <div class="card-content">
+                        <h3>Total Carbon Footprint</h3>
+                        <div class="metric-value"><?php echo number_format($report['summary']['total_carbon_g'], 3); ?>g CO₂</div>
+                        <div class="metric-subtitle"><?php echo number_format($report['summary']['total_carbon_kg'], 6); ?>kg CO₂</div>
+                    </div>
+                </div>
+
+                <div class="summary-card carbon-saved">
+                    <div class="card-icon">
+                        <span class="dashicons dashicons-heart"></span>
+                    </div>
+                    <div class="card-content">
+                        <h3>Carbon Saved</h3>
+                        <div class="metric-value"><?php echo number_format($report['summary']['total_savings_g'], 3); ?>g CO₂</div>
+                        <div class="metric-subtitle"><?php echo $report['summary']['savings_percentage']; ?>% reduction</div>
+                    </div>
+                </div>
+
+                <div class="summary-card page-views">
+                    <div class="card-icon">
+                        <span class="dashicons dashicons-visibility"></span>
+                    </div>
+                    <div class="card-content">
+                        <h3>Page Views</h3>
+                        <div class="metric-value"><?php echo number_format($report['summary']['total_page_views']); ?></div>
+                        <div class="metric-subtitle"><?php echo number_format($report['summary']['carbon_per_view_g'], 6); ?>g CO₂/view</div>
+                    </div>
+                </div>
+
+                <div class="summary-card data-transfer">
+                    <div class="card-icon">
+                        <span class="dashicons dashicons-networking"></span>
+                    </div>
+                    <div class="card-content">
+                        <h3>Data Transfer</h3>
+                        <div class="metric-value"><?php echo number_format($report['summary']['total_data_mb'], 1); ?> MB</div>
+                        <div class="metric-subtitle"><?php echo number_format($report['summary']['total_data_kb']); ?> KB</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Environmental Impact -->
+            <?php if (!empty($report['summary']['equivalent_metrics'])): ?>
+            <div class="analytics-section environmental-impact">
+                <h2>Environmental Impact Equivalent</h2>
+                <div class="equivalent-metrics">
+                    <div class="equivalent-item">
+                        <span class="dashicons dashicons-palmtree"></span>
+                        <strong><?php echo $report['summary']['equivalent_metrics']['trees_planted']; ?> trees</strong>
+                        <span>planted (carbon absorbed yearly)</span>
+                    </div>
+                    <div class="equivalent-item">
+                        <span class="dashicons dashicons-car"></span>
+                        <strong><?php echo number_format($report['summary']['equivalent_metrics']['km_driven'], 1); ?> km</strong>
+                        <span>driven in an average car</span>
+                    </div>
+                    <div class="equivalent-item">
+                        <span class="dashicons dashicons-smartphone"></span>
+                        <strong><?php echo number_format($report['summary']['equivalent_metrics']['phone_charges']); ?> phone charges</strong>
+                        <span>from the grid</span>
+                    </div>
+                    <div class="equivalent-item">
+                        <span class="dashicons dashicons-lightbulb"></span>
+                        <strong><?php echo number_format($report['summary']['equivalent_metrics']['led_bulb_hours']); ?> hours</strong>
+                        <span>of LED bulb usage</span>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
+
+            <!-- Insights -->
+            <?php if (!empty($report['insights'])): ?>
+            <div class="analytics-section insights">
+                <h2>Insights & Opportunities</h2>
+                <div class="insights-list">
+                    <?php foreach ($report['insights'] as $insight): ?>
+                    <div class="insight-item impact-<?php echo esc_attr($insight['impact']); ?>">
+                        <div class="insight-icon">
+                            <?php if ($insight['type'] === 'peak_carbon'): ?>
+                                <span class="dashicons dashicons-warning"></span>
+                            <?php elseif ($insight['type'] === 'optimization_opportunity'): ?>
+                                <span class="dashicons dashicons-performance"></span>
+                            <?php else: ?>
+                                <span class="dashicons dashicons-info"></span>
+                            <?php endif; ?>
+                        </div>
+                        <div class="insight-content">
+                            <h4><?php echo esc_html($insight['title']); ?></h4>
+                            <p><?php echo esc_html($insight['description']); ?></p>
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+            <?php endif; ?>
+
+            <!-- Recommendations -->
+            <?php if (!empty($report['recommendations'])): ?>
+            <div class="analytics-section recommendations">
+                <h2>Recommendations</h2>
+                <div class="recommendations-list">
+                    <?php foreach ($report['recommendations'] as $recommendation): ?>
+                    <div class="recommendation-item priority-<?php echo esc_attr($recommendation['priority']); ?>">
+                        <div class="recommendation-header">
+                            <h4><?php echo esc_html($recommendation['title']); ?></h4>
+                            <span class="priority-badge"><?php echo esc_html(ucfirst($recommendation['priority'])); ?> Priority</span>
+                        </div>
+                        <p><?php echo esc_html($recommendation['description']); ?></p>
+                        <?php if (isset($recommendation['estimated_savings'])): ?>
+                        <div class="estimated-savings">
+                            <strong>Estimated additional savings: <?php echo esc_html($recommendation['estimated_savings']); ?></strong>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+            <?php endif; ?>
+
+            <!-- Timeline Chart Placeholder -->
+            <div class="analytics-section timeline-chart">
+                <h2>Carbon Intensity Timeline</h2>
+                <div id="carbon-timeline-chart" style="height: 300px; background: #f9f9f9; border: 1px solid #ddd; display: flex; align-items: center; justify-content: center;">
+                    <p>Chart will be implemented with JavaScript charting library</p>
+                </div>
+            </div>
+
+            <!-- Raw Data Table -->
+            <div class="analytics-section data-table">
+                <h2>Detailed Data</h2>
+                <div class="table-responsive">
+                    <table class="wp-list-table widefat fixed striped">
+                        <thead>
+                            <tr>
+                                <th>Date/Time</th>
+                                <th>Carbon Intensity</th>
+                                <th>Optimization Level</th>
+                                <th>Page Views</th>
+                                <th>Data Transfer (KB)</th>
+                                <th>Carbon Footprint (g)</th>
+                                <th>Carbon Saved (g)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if (!empty($report['timeline'])): ?>
+                                <?php foreach (array_slice($report['timeline'], 0, 20) as $row): ?>
+                                <tr>
+                                    <td><?php echo esc_html($row['timestamp']); ?></td>
+                                    <td><?php echo esc_html(number_format($row['avg_carbon_intensity'], 1)); ?> g/kWh</td>
+                                    <td>
+                                        <span class="optimization-badge <?php echo esc_attr($row['optimization_level']); ?>">
+                                            <?php echo esc_html(ucfirst($row['optimization_level'])); ?>
+                                        </span>
+                                    </td>
+                                    <td><?php echo esc_html(number_format($row['page_views'])); ?></td>
+                                    <td><?php echo esc_html(number_format($row['data_transferred_kb'], 2)); ?></td>
+                                    <td><?php echo esc_html(number_format($row['estimated_carbon_g'], 6)); ?></td>
+                                    <td><?php echo esc_html(number_format($row['savings_carbon_g'], 6)); ?></td>
+                                </tr>
+                                <?php endforeach; ?>
+                            <?php else: ?>
+                                <tr>
+                                    <td colspan="7" style="text-align: center;">No data available for the selected period.</td>
+                                </tr>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <script>
+        function exportAnalytics(format) {
+            const period = document.getElementById('analytics-period').value;
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = ajaxurl;
+
+            const fields = {
+                action: 'grid_aware_export_analytics',
+                nonce: '<?php echo wp_create_nonce('grid_aware_analytics'); ?>',
+                period: period,
+                format: format
+            };
+
+            for (const key in fields) {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = key;
+                input.value = fields[key];
+                form.appendChild(input);
+            }
+
+            document.body.appendChild(form);
+            form.submit();
+            document.body.removeChild(form);
+        }
+        </script>
+        <?php
+    }
 }
+?>

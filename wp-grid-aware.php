@@ -19,6 +19,7 @@ define('GRID_AWARE_PATH', plugin_dir_path(__FILE__));
 define('GRID_AWARE_URL', plugin_dir_url(__FILE__));
 
 require_once GRID_AWARE_PATH . 'includes/class-grid-aware-base.php';
+require_once GRID_AWARE_PATH . 'includes/class-grid-aware-analytics.php';
 require_once GRID_AWARE_PATH . 'includes/class-grid-aware-api.php';
 require_once GRID_AWARE_PATH . 'includes/class-grid-aware-admin.php';
 require_once GRID_AWARE_PATH . 'includes/class-grid-aware-server.php';
@@ -28,14 +29,13 @@ function grid_aware_autoloader($class_name) {
     // Only handle our own classes
     if (strpos($class_name, 'Grid_Aware_') !== 0) {
         return;
-    }
-
-    // Skip already loaded core classes
+    }    // Skip already loaded core classes
     if (in_array($class_name, array(
         'Grid_Aware_Base',
         'Grid_Aware_API',
         'Grid_Aware_Admin',
-        'Grid_Aware_Server'
+        'Grid_Aware_Server',
+        'Grid_Aware_Analytics'
     ))) {
         return;
     }
@@ -64,6 +64,12 @@ function grid_aware_activate() {
     add_option('grid_aware_tiny_placeholders_mode', 'super-eco-only');
     add_option('grid_aware_optimize_video', 'yes');
 
+    // Create analytics tables
+    if (class_exists('Grid_Aware_Analytics')) {
+        $analytics = Grid_Aware_Analytics::get_instance();
+        $analytics->create_tables();
+    }
+
     // Flush rewrite rules
     flush_rewrite_rules();
 }
@@ -84,13 +90,16 @@ function grid_aware_init() {
         // Initialize the API (always needed)
         $api = Grid_Aware_API::get_instance();
 
+        // Initialize analytics (always needed for tracking)
+        $analytics = Grid_Aware_Analytics::get_instance();
+
         // Initialize the admin features if in admin area
         if (is_admin()) {
             $admin = Grid_Aware_Admin::get_instance();
         }
 
         // Always initialize the front-end features
-        $server = Grid_Aware_Server::get_instance();
+        $server = Grid_Aware_Server::get_instance();;
     } catch (Exception $e) {
         // Show admin notice if appropriate
         if (is_admin() && current_user_can('manage_options')) {

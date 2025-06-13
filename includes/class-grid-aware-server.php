@@ -199,6 +199,18 @@ class Grid_Aware_Server extends Grid_Aware_Base {
                 preg_match('/src=[\'"]([^\'"]*)[\'"]/', $img_tag, $src_matches);
                 $src = !empty($src_matches[1]) ? $src_matches[1] : '';
 
+                // Extract image dimensions for better user context
+                $width = $height = '';
+                preg_match('/width=[\'"]([^\'"]*)[\'"]/', $img_tag, $width_matches);
+                if (!empty($width_matches[1])) {
+                    $width = $width_matches[1];
+                }
+
+                preg_match('/height=[\'"]([^\'"]*)[\'"]/', $img_tag, $height_matches);
+                if (!empty($height_matches[1])) {
+                    $height = $height_matches[1];
+                }
+
                 // Determine image type from the src if possible
                 $image_type = '[Image]';
                 if (strpos($src, '.jpg') !== false || strpos($src, '.jpeg') !== false) {
@@ -211,8 +223,27 @@ class Grid_Aware_Server extends Grid_Aware_Base {
                     $image_type = '[Animated image]';
                 }
 
-                // Build an enhanced alt text box
-                $box = '<div class="grid-aware-alt-text-box ' . esc_attr($classes) . '" data-full-src="' . esc_attr($src) . '" tabindex="0" role="img" aria-label="' . esc_attr($alt_text) . '">';
+                // Generate a unique ID for better accessibility targeting
+                $unique_id = 'grid-aware-img-' . mt_rand(1000, 9999);
+
+                // Build an enhanced alt text box with improved accessibility
+                $box = '<div class="grid-aware-alt-text-box ' . esc_attr($classes) . '"
+                    data-full-src="' . esc_attr($src) . '"
+                    tabindex="0"
+                    role="img"
+                    aria-label="' . esc_attr($alt_text) . '"
+                    aria-describedby="' . $unique_id . '-desc"
+                    id="' . $unique_id . '"';
+
+                // Add original dimensions as data attributes if available
+                if ($width) {
+                    $box .= ' data-width="' . esc_attr($width) . '"';
+                }
+                if ($height) {
+                    $box .= ' data-height="' . esc_attr($height) . '"';
+                }
+
+                $box .= '>';
 
                 // Image icon
                 $box .= '<div class="grid-aware-image-icon" aria-hidden="true">📷</div>';
@@ -221,15 +252,21 @@ class Grid_Aware_Server extends Grid_Aware_Base {
                 $box .= '<span class="grid-aware-image-type">' . esc_html($image_type) . '</span>';
                 $box .= '<span class="grid-aware-alt-text">' . esc_html($alt_text) . '</span>';
 
-                // Eco information
-                $box .= '<span class="grid-aware-eco-info" aria-hidden="true">Image not loaded to reduce carbon impact</span>';
-                $box .= '<span class="grid-aware-intensity-value" aria-hidden="true">Current grid intensity: ' . esc_html($intensity) . ' gCO2/kWh</span>';
+                // Eco information with accessibility enhancements
+                $box .= '<span id="' . $unique_id . '-desc" class="grid-aware-eco-info">Image not loaded to reduce carbon impact</span>';
+                $box .= '<span class="grid-aware-intensity-value">Current grid intensity: ' . esc_html($intensity) . ' gCO2/kWh</span>';
 
-                // Show image button (optional)
-                $box .= '<button class="grid-aware-show-image" data-src="' . esc_attr($src) . '">Show Image</button>';
+                // Screen reader specific text
+                $box .= '<span class="screen-reader-text">Press Enter or click the Show Image button to load the image</span>';
+
+                // Show image button with enhanced accessibility
+                $box .= '<button class="grid-aware-show-image"
+                    data-src="' . esc_attr($src) . '"
+                    aria-controls="' . $unique_id . '"
+                    aria-describedby="' . $unique_id . '-desc">Show Image</button>';
 
                 // Mode label
-                $box .= '<span class="grid-aware-mode-label">Super-Eco Mode</span>';
+                $box .= '<span class="grid-aware-mode-label" aria-hidden="true">Super-Eco Mode</span>';
 
                 $box .= '</div>';
 
@@ -272,6 +309,11 @@ class Grid_Aware_Server extends Grid_Aware_Base {
                     $img_tag = str_replace('<img ', '<img class="grid-aware-tiny-image" ', $img_tag);
                 }
 
+                // Add aria attributes for accessibility
+                if (strpos($img_tag, 'aria-busy') === false) {
+                    $img_tag = str_replace('<img ', '<img aria-busy="true" ', $img_tag);
+                }
+
                 return $img_tag;
             }, $content);
         }
@@ -302,22 +344,55 @@ class Grid_Aware_Server extends Grid_Aware_Base {
             $src = wp_get_attachment_url($post_thumbnail_id);
             $intensity = $this->current_intensity;
 
-            // Build enhanced alt text box for featured image
-            $box = '<div class="grid-aware-alt-text-box grid-aware-thumbnail-placeholder" data-full-src="' . esc_attr($src) . '" tabindex="0" role="img" aria-label="' . esc_attr($alt_text) . '">';
+            // Get image dimensions
+            $metadata = wp_get_attachment_metadata($post_thumbnail_id);
+            $width = isset($metadata['width']) ? $metadata['width'] : '';
+            $height = isset($metadata['height']) ? $metadata['height'] : '';
+
+            // Generate a unique ID for better accessibility targeting
+            $unique_id = 'grid-aware-featured-' . $post_id;
+
+            // Build enhanced alt text box for featured image with improved accessibility
+            $box = '<div class="grid-aware-alt-text-box grid-aware-thumbnail-placeholder"
+                data-full-src="' . esc_attr($src) . '"
+                tabindex="0"
+                role="img"
+                aria-label="' . esc_attr($alt_text) . '"
+                aria-describedby="' . $unique_id . '-desc"
+                id="' . $unique_id . '"';
+
+            // Add original dimensions as data attributes if available
+            if ($width) {
+                $box .= ' data-width="' . esc_attr($width) . '"';
+            }
+            if ($height) {
+                $box .= ' data-height="' . esc_attr($height) . '"';
+            }
+
+            $box .= '>';
+
+            // Image icon with appropriate aria attributes
+            $box .= '<div class="grid-aware-image-icon" aria-hidden="true">📷</div>';
 
             // Alt text description
             $box .= '<span class="grid-aware-image-type">[Featured Image]</span>';
             $box .= '<span class="grid-aware-alt-text">' . esc_html($alt_text) . '</span>';
 
-            // Eco information
-            $box .= '<span class="grid-aware-eco-info" aria-hidden="true">Image not loaded to reduce carbon impact</span>';
-            $box .= '<span class="grid-aware-intensity-value" aria-hidden="true">Current grid intensity: ' . esc_html($intensity) . ' gCO2/kWh</span>';
+            // Eco information with better accessibility
+            $box .= '<span id="' . $unique_id . '-desc" class="grid-aware-eco-info">Image not loaded to reduce carbon impact</span>';
+            $box .= '<span class="grid-aware-intensity-value">Current grid intensity: ' . esc_html($intensity) . ' gCO2/kWh</span>';
 
-            // Show image button
-            $box .= '<button class="grid-aware-show-image" data-src="' . esc_attr($src) . '">Show Image</button>';
+            // Screen reader specific text
+            $box .= '<span class="screen-reader-text">Press Enter or click the Show Image button to load the featured image</span>';
+
+            // Show image button with improved accessibility
+            $box .= '<button class="grid-aware-show-image"
+                data-src="' . esc_attr($src) . '"
+                aria-controls="' . $unique_id . '"
+                aria-describedby="' . $unique_id . '-desc">Show Image</button>';
 
             // Mode label
-            $box .= '<span class="grid-aware-mode-label">Super-Eco Mode</span>';
+            $box .= '<span class="grid-aware-mode-label" aria-hidden="true">Super-Eco Mode</span>';
 
             $box .= '</div>';
 
@@ -385,9 +460,44 @@ class Grid_Aware_Server extends Grid_Aware_Base {
      * Text-only mode for super-eco
      */
     public function text_only_mode($content) {
-        // Replace iframes with placeholders
+        // Replace iframes with accessible placeholders
         $content = preg_replace_callback('/<iframe[^>]*><\/iframe>/', function($matches) {
-            return '<div class="grid-aware-iframe-placeholder">[Embedded content hidden to save energy. Click to load.]</div>';
+            $iframe_tag = $matches[0];
+
+            // Extract source if possible
+            preg_match('/src=[\'"]([^\'"]*)[\'"]/', $iframe_tag, $src_matches);
+            $src = !empty($src_matches[1]) ? $src_matches[1] : '';
+
+            // Determine iframe content type for better description
+            $content_type = 'embedded content';
+            if (strpos($src, 'maps.google') !== false || strpos($src, 'google.com/maps') !== false) {
+                $content_type = 'Google Map';
+            } elseif (strpos($src, 'form') !== false) {
+                $content_type = 'embedded form';
+            } elseif (strpos($src, 'data') !== false || strpos($src, 'chart') !== false) {
+                $content_type = 'embedded data visualization';
+            }
+
+            // Generate a unique ID for accessibility purposes
+            $unique_id = 'grid-aware-iframe-' . mt_rand(1000, 9999);
+
+            // Encode the iframe for later retrieval
+            $encoded_iframe = esc_attr($iframe_tag);
+
+            // Build accessible placeholder
+            return '<div class="grid-aware-iframe-placeholder"
+                    data-iframe="' . $encoded_iframe . '"
+                    tabindex="0"
+                    role="button"
+                    aria-label="Click to load ' . esc_attr($content_type) . '"
+                    id="' . $unique_id . '">
+                <div class="grid-aware-iframe-icon" aria-hidden="true">📋</div>
+                <p id="' . $unique_id . '-desc">' . esc_html($content_type) . ' hidden to save energy (current intensity: ' .
+                    esc_html($this->current_intensity) . ' gCO2/kWh)</p>
+                <span class="screen-reader-text">Press Enter or click to load this content</span>
+                <button class="grid-aware-load-iframe"
+                    aria-describedby="' . $unique_id . '-desc">Load ' . esc_html($content_type) . '</button>
+            </div>';
         }, $content);
 
         return $content;
@@ -425,13 +535,24 @@ class Grid_Aware_Server extends Grid_Aware_Base {
         // Store the original embed code
         $encoded_html = esc_attr($html);
 
-        // Create placeholder
-        return '<div class="grid-aware-video-placeholder" data-video-embed="' . $encoded_html . '">
+        // Generate a unique ID for accessibility purposes
+        $unique_id = 'grid-aware-video-' . mt_rand(1000, 9999);
+
+        // Create placeholder with enhanced accessibility
+        return '<div class="grid-aware-video-placeholder"
+                data-video-embed="' . $encoded_html . '"
+                tabindex="0"
+                role="button"
+                aria-label="Click to load ' . esc_attr($title) . '"
+                id="' . $unique_id . '">
             <div class="grid-aware-video-message">
-                <p>' . esc_html($title) . '</p>
-                <p>Video loading delayed to reduce carbon impact (current intensity: ' .
+                <div class="grid-aware-video-icon" aria-hidden="true">▶️</div>
+                <p id="' . $unique_id . '-title">' . esc_html($title) . '</p>
+                <p id="' . $unique_id . '-desc">Video loading delayed to reduce carbon impact (current intensity: ' .
                     esc_html($this->current_intensity) . ' gCO2/kWh)</p>
-                <button class="grid-aware-load-video">Load Video</button>
+                <span class="screen-reader-text">Press Enter or click to load this video</span>
+                <button class="grid-aware-load-video"
+                    aria-describedby="' . $unique_id . '-desc ' . $unique_id . '-title">Load Video</button>
             </div>
         </div>';
     }
