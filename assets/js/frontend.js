@@ -1,11 +1,14 @@
 /**
  * Grid-Aware Frontend Scripts
- * Enhanced for accessibility
+ * Enhanced for accessibility and smart image serving
  */
 (function() {
   // Wait for DOM to be loaded
   document.addEventListener('DOMContentLoaded', function() {
       console.log('Grid-Aware: Frontend script loaded');
+
+      // Initialize Smart Image Serving
+      initSmartImageServing();
 
       // Add skip link to main content for keyboard users
       addSkipLink();
@@ -97,6 +100,144 @@
       // Add role attributes to improve screen reader experience
       addRoleAttributes();
   });
+
+  /**
+   * Initialize Smart Image Serving
+   */
+  function initSmartImageServing() {
+      // Check if connection detection is available
+      if (typeof window.GridAwareConnection !== 'undefined') {
+          // Monitor connection changes and update image serving strategy
+          monitorConnectionChanges();
+
+          // Optimize existing images based on current connection
+          optimizeExistingImages();
+
+          // Set up observer for new images
+          setupImageObserver();
+      }
+  }
+
+  /**
+   * Monitor connection changes
+   */
+  function monitorConnectionChanges() {
+      if ('connection' in navigator && navigator.connection) {
+          navigator.connection.addEventListener('change', function() {
+              console.log('Grid-Aware: Connection changed, re-evaluating image optimization');
+              setTimeout(function() {
+                  optimizeExistingImages();
+              }, 1000);
+          });
+      }
+  }
+
+  /**
+   * Optimize existing images based on connection
+   */
+  function optimizeExistingImages() {
+      const images = document.querySelectorAll('img[data-grid-aware-src]');
+      const connectionInfo = window.GridAwareConnection.get();
+
+      images.forEach(function(img) {
+          const originalSrc = img.getAttribute('data-grid-aware-src');
+          const optimizedSrc = getOptimizedImageSrc(originalSrc, connectionInfo);
+
+          if (optimizedSrc && optimizedSrc !== img.src) {
+              // Preload the optimized image
+              const preloadImg = new Image();
+              preloadImg.onload = function() {
+                  img.src = optimizedSrc;
+              };
+              preloadImg.src = optimizedSrc;
+          }
+      });
+  }
+
+  /**
+   * Set up observer for new images
+   */
+  function setupImageObserver() {
+      const observer = new MutationObserver(function(mutations) {
+          mutations.forEach(function(mutation) {
+              mutation.addedNodes.forEach(function(node) {
+                  if (node.nodeType === 1) { // Element node
+                      const images = node.tagName === 'IMG' ?
+                          [node] :
+                          node.querySelectorAll ? node.querySelectorAll('img') : [];
+
+                      images.forEach(function(img) {
+                          if (img.hasAttribute('data-grid-aware-src')) {
+                              optimizeSingleImage(img);
+                          }
+                      });
+                  }
+              });
+          });
+      });
+
+      observer.observe(document.body, {
+          childList: true,
+          subtree: true
+      });
+  }
+
+  /**
+   * Optimize a single image
+   */
+  function optimizeSingleImage(img) {
+      const connectionInfo = window.GridAwareConnection.get();
+      const originalSrc = img.getAttribute('data-grid-aware-src');
+      const optimizedSrc = getOptimizedImageSrc(originalSrc, connectionInfo);
+
+      if (optimizedSrc) {
+          img.src = optimizedSrc;
+      }
+  }
+
+  /**
+   * Get optimized image source based on connection
+   */
+  function getOptimizedImageSrc(originalSrc, connectionInfo) {
+      // This would typically make a request to the server to get the optimized URL
+      // For now, we'll add query parameters to indicate the optimization level
+
+      const url = new URL(originalSrc, window.location.origin);
+      const optimizationLevel = calculateOptimizationLevel(connectionInfo);
+
+      // Add query parameters for server-side processing
+      url.searchParams.set('grid_aware_optimization', optimizationLevel);
+      url.searchParams.set('grid_aware_connection', JSON.stringify({
+          effective_type: connectionInfo.effective_type,
+          downlink: connectionInfo.downlink,
+          rtt: connectionInfo.rtt,
+          save_data: connectionInfo.save_data
+      }));
+
+      return url.toString();
+  }
+
+  /**
+   * Calculate optimization level based on connection info
+   */
+  function calculateOptimizationLevel(connectionInfo) {
+      // Aggressive optimization for slow connections or data saver
+      if (connectionInfo.save_data ||
+          connectionInfo.effective_type === 'slow-2g' ||
+          connectionInfo.effective_type === '2g' ||
+          (connectionInfo.downlink && connectionInfo.downlink < 1.5)) {
+          return 'aggressive';
+      }
+
+      // Medium optimization for 3G
+      if (connectionInfo.effective_type === '3g' ||
+          (connectionInfo.downlink && connectionInfo.downlink < 5)) {
+          return 'medium';
+      }
+
+      // Minimal optimization for fast connections
+      return 'minimal';
+  }
 
   // Add keyboard handling for the alt text boxes
   document.addEventListener('keydown', function(e) {

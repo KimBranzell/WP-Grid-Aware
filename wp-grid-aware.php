@@ -55,6 +55,7 @@ function grid_aware_activate() {
     // Default options setup
     add_option('grid_aware_optimize_images', 'yes');
     add_option('grid_aware_lazy_load', 'yes');
+    add_option('grid_aware_smart_image_serving', 'yes');
     add_option('grid_aware_defer_non_essential', 'yes');
     add_option('grid_aware_essential_scripts', 'jquery');
     add_option('grid_aware_essential_styles', '');
@@ -121,6 +122,15 @@ function grid_aware_enqueue_frontend_assets() {
         return;
     }
 
+    // Enqueue connection detector early to detect connection ASAP
+    wp_enqueue_script(
+        'grid-aware-connection-detector',
+        GRID_AWARE_URL . 'assets/js/connection-detector.js',
+        array(),
+        GRID_AWARE_VERSION,
+        false // Load in head to detect connection early
+    );
+
     // Enqueue frontend CSS
     wp_enqueue_style(
         'grid-aware-frontend',
@@ -133,7 +143,7 @@ function grid_aware_enqueue_frontend_assets() {
     wp_enqueue_script(
         'grid-aware-frontend',
         GRID_AWARE_URL . 'assets/js/frontend.js',
-        array(),
+        array('grid-aware-connection-detector'),
         GRID_AWARE_VERSION,
         true
     );

@@ -10,6 +10,7 @@ if (!defined('ABSPATH')) exit;
 class Grid_Aware_Analytics extends Grid_Aware_Base {
 
     private $table_analytics;
+    private $table_daily;
 
     /**
      * Constructor
@@ -19,6 +20,7 @@ class Grid_Aware_Analytics extends Grid_Aware_Base {
 
         global $wpdb;
         $this->table_analytics = $wpdb->prefix . 'grid_aware_analytics';
+        $this->table_daily = $wpdb->prefix . 'grid_aware_daily_summary';
 
         // Create tables on activation
         add_action('grid_aware_analytics_create_tables', array($this, 'create_tables'));

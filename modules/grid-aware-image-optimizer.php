@@ -23,12 +23,16 @@ class Grid_Aware_Image_Optimizer extends Grid_Aware_Base {
 
         // Setup hooks based on settings and mode
         $this->setup_hooks();
-    }
-
-    /**
+    }    /**
      * Setup module hooks
      */
     private function setup_hooks() {
+        // Setup Smart Image Serving (always active to optimize based on connection + carbon intensity)
+        $smart_serving = get_option('grid_aware_smart_image_serving', 'yes');
+        if ($smart_serving === 'yes') {
+            $this->setup_smart_image_serving();
+        }
+
         // Check which features are enabled
         $alt_text_mode = get_option('grid_aware_alt_text_mode', 'disabled');
         $use_alt_text = false;
@@ -717,9 +721,421 @@ class Grid_Aware_Image_Optimizer extends Grid_Aware_Base {
 
             // Check periodically for new images (e.g., added by JavaScript)
             setInterval(progressiveImageLoading, 2000);
-        })();
-        </script>
+        })();        </script>
         <?php
     }
+
     public function add_tiny_image_styles() { /* Implementation */ }
+
+    /**
+     * Setup Smart Image Serving based on connection and carbon intensity
+     */
+    public function setup_smart_image_serving() {
+        // Hook into WordPress image serving
+        add_filter('wp_get_attachment_image_src', array($this, 'optimize_image_src_by_connection'), 10, 4);
+        add_filter('wp_calculate_image_srcset', array($this, 'optimize_srcset_by_connection'), 10, 5);
+
+        // Add Client Hints support
+        add_action('wp_head', array($this, 'add_client_hints_headers'));
+        add_action('send_headers', array($this, 'send_accept_ch_headers'));
+    }
+
+    /**
+     * Add Client Hints meta tags
+     */
+    public function add_client_hints_headers() {
+        echo '<meta http-equiv="Accept-CH" content="DPR, Viewport-Width, Width, Downlink, ECT, RTT">' . "\n";
+        echo '<meta http-equiv="Delegate-CH" content="DPR, Viewport-Width, Width, Downlink, ECT, RTT">' . "\n";
+    }
+
+    /**
+     * Send Accept-CH headers
+     */
+    public function send_accept_ch_headers() {
+        if (!headers_sent()) {
+            header('Accept-CH: DPR, Viewport-Width, Width, Downlink, ECT, RTT');
+            header('Delegate-CH: DPR, Viewport-Width, Width, Downlink, ECT, RTT');
+        }
+    }
+
+    /**
+     * Optimize image source based on connection and carbon intensity
+     */
+    public function optimize_image_src_by_connection($image, $attachment_id, $size, $icon) {
+        if (!$image || !is_array($image)) {
+            return $image;
+        }
+
+        $connection_info = $this->get_connection_info();
+        $optimization_level = $this->calculate_optimization_level($connection_info, $this->intensity);
+
+        // Get optimized image URL
+        $optimized_url = $this->get_optimized_image_url($image[0], $optimization_level, $attachment_id);
+
+        if ($optimized_url) {
+            $image[0] = $optimized_url;
+        }
+
+        return $image;
+    }
+
+    /**
+     * Optimize srcset based on connection and carbon intensity
+     */
+    public function optimize_srcset_by_connection($sources, $size_array, $image_src, $image_meta, $attachment_id) {
+        if (empty($sources)) {
+            return $sources;
+        }
+
+        $connection_info = $this->get_connection_info();
+        $optimization_level = $this->calculate_optimization_level($connection_info, $this->intensity);
+
+        foreach ($sources as $width => &$source) {
+            $optimized_url = $this->get_optimized_image_url($source['url'], $optimization_level, $attachment_id);
+            if ($optimized_url) {
+                $source['url'] = $optimized_url;
+            }
+        }
+
+        return $sources;
+    }
+
+    /**
+     * Get connection information from various sources
+     */
+    private function get_connection_info() {
+        $connection_info = array(
+            'effective_type' => 'unknown',
+            'downlink' => null,
+            'rtt' => null,
+            'save_data' => false
+        );
+
+        // Check Client Hints headers
+        if (isset($_SERVER['HTTP_DOWNLINK'])) {
+            $connection_info['downlink'] = floatval($_SERVER['HTTP_DOWNLINK']);
+        }
+
+        if (isset($_SERVER['HTTP_RTT'])) {
+            $connection_info['rtt'] = intval($_SERVER['HTTP_RTT']);
+        }
+
+        if (isset($_SERVER['HTTP_ECT'])) {
+            $connection_info['effective_type'] = sanitize_text_field($_SERVER['HTTP_ECT']);
+        }
+
+        if (isset($_SERVER['HTTP_SAVE_DATA'])) {
+            $connection_info['save_data'] = $_SERVER['HTTP_SAVE_DATA'] === 'on';
+        }
+
+        // Fallback: Use JavaScript detection (stored in cookie)
+        if ($connection_info['effective_type'] === 'unknown') {
+            $connection_info = $this->get_js_detected_connection();
+        }
+
+        return $connection_info;
+    }
+
+    /**
+     * Get JavaScript-detected connection info from cookie
+     */
+    private function get_js_detected_connection() {
+        $default = array(
+            'effective_type' => '4g', // Default to good connection
+            'downlink' => 10,
+            'rtt' => 100,
+            'save_data' => false
+        );
+
+        if (isset($_COOKIE['grid_aware_connection'])) {
+            $stored = json_decode(stripslashes($_COOKIE['grid_aware_connection']), true);
+            if (is_array($stored)) {
+                return array_merge($default, $stored);
+            }
+        }
+
+        return $default;
+    }
+
+    /**
+     * Calculate optimization level based on connection and carbon intensity
+     */
+    private function calculate_optimization_level($connection_info, $carbon_intensity) {
+        $level = 'medium'; // Default
+
+        // Base level on carbon intensity
+        if ($carbon_intensity > 500) {
+            $level = 'aggressive';
+        } elseif ($carbon_intensity < 200) {
+            $level = 'minimal';
+        } else {
+            $level = 'medium';
+        }
+
+        // Adjust based on connection
+        if ($connection_info['save_data'] || $connection_info['effective_type'] === 'slow-2g' || $connection_info['effective_type'] === '2g') {
+            $level = 'aggressive';
+        } elseif ($connection_info['effective_type'] === '3g' && $level !== 'aggressive') {
+            $level = 'medium';
+        } elseif ($connection_info['effective_type'] === '4g' && $level === 'minimal') {
+            $level = 'medium';
+        }
+
+        // Consider downlink speed
+        if (isset($connection_info['downlink'])) {
+            if ($connection_info['downlink'] < 1.5) {
+                $level = 'aggressive';
+            } elseif ($connection_info['downlink'] > 10 && $level !== 'aggressive') {
+                $level = ($carbon_intensity < 200) ? 'minimal' : 'medium';
+            }
+        }
+
+        return apply_filters('grid_aware_image_optimization_level', $level, $connection_info, $carbon_intensity);
+    }
+
+    /**
+     * Get optimized image URL based on optimization level
+     */
+    private function get_optimized_image_url($original_url, $optimization_level, $attachment_id) {
+        $cache_key = "grid_aware_optimized_" . md5($original_url . $optimization_level);
+        $cached_url = wp_cache_get($cache_key, 'grid_aware_images');
+
+        if ($cached_url !== false) {
+            return $cached_url;
+        }
+
+        $quality_settings = $this->get_quality_settings($optimization_level);
+        $optimized_url = $this->generate_optimized_image($original_url, $quality_settings, $attachment_id);
+
+        // Cache for 1 hour
+        wp_cache_set($cache_key, $optimized_url, 'grid_aware_images', 3600);
+
+        return $optimized_url;
+    }
+
+    /**
+     * Get quality settings based on optimization level
+     */
+    private function get_quality_settings($optimization_level) {
+        $settings = array(
+            'minimal' => array(
+                'jpeg_quality' => 85,
+                'webp_quality' => 80,
+                'png_compression' => 6,
+                'enable_webp' => true,
+                'enable_avif' => false
+            ),
+            'medium' => array(
+                'jpeg_quality' => 75,
+                'webp_quality' => 70,
+                'png_compression' => 7,
+                'enable_webp' => true,
+                'enable_avif' => true
+            ),
+            'aggressive' => array(
+                'jpeg_quality' => 60,
+                'webp_quality' => 55,
+                'png_compression' => 9,
+                'enable_webp' => true,
+                'enable_avif' => true
+            )
+        );
+
+        return isset($settings[$optimization_level]) ? $settings[$optimization_level] : $settings['medium'];
+    }
+
+    /**
+     * Generate optimized image with specified quality settings
+     */
+    private function generate_optimized_image($original_url, $quality_settings, $attachment_id) {
+        // Get file path from URL
+        $file_path = $this->url_to_path($original_url);
+        if (!$file_path || !file_exists($file_path)) {
+            return $original_url;
+        }
+
+        $file_info = pathinfo($file_path);
+        $optimization_suffix = $this->get_optimization_suffix($quality_settings);
+        $optimized_filename = $file_info['filename'] . $optimization_suffix;
+
+        // Try WebP first if supported
+        if ($quality_settings['enable_webp'] && $this->browser_supports_webp()) {
+            $webp_path = $file_info['dirname'] . '/' . $optimized_filename . '.webp';
+            $webp_url = $this->path_to_url($webp_path);
+
+            if (file_exists($webp_path) || $this->create_webp_image($file_path, $webp_path, $quality_settings['webp_quality'])) {
+                return $webp_url;
+            }
+        }
+
+        // Try AVIF if supported and enabled
+        if ($quality_settings['enable_avif'] && $this->browser_supports_avif()) {
+            $avif_path = $file_info['dirname'] . '/' . $optimized_filename . '.avif';
+            $avif_url = $this->path_to_url($avif_path);
+
+            if (file_exists($avif_path) || $this->create_avif_image($file_path, $avif_path, $quality_settings)) {
+                return $avif_url;
+            }
+        }
+
+        // Fallback to optimized JPEG/PNG
+        $optimized_path = $file_info['dirname'] . '/' . $optimized_filename . '.' . $file_info['extension'];
+        $optimized_url = $this->path_to_url($optimized_path);
+
+        if (file_exists($optimized_path) || $this->create_optimized_image($file_path, $optimized_path, $quality_settings)) {
+            return $optimized_url;
+        }
+
+        return $original_url;
+    }
+
+    /**
+     * Get optimization suffix for filename
+     */
+    private function get_optimization_suffix($quality_settings) {
+        return '_opt_' . $quality_settings['jpeg_quality'];
+    }
+
+    /**
+     * Check if browser supports WebP
+     */
+    private function browser_supports_webp() {
+        return isset($_SERVER['HTTP_ACCEPT']) && strpos($_SERVER['HTTP_ACCEPT'], 'image/webp') !== false;
+    }
+
+    /**
+     * Check if browser supports AVIF
+     */
+    private function browser_supports_avif() {
+        return isset($_SERVER['HTTP_ACCEPT']) && strpos($_SERVER['HTTP_ACCEPT'], 'image/avif') !== false;
+    }
+
+    /**
+     * Convert URL to file path
+     */
+    private function url_to_path($url) {
+        $upload_dir = wp_upload_dir();
+        $upload_url = $upload_dir['baseurl'];
+        $upload_path = $upload_dir['basedir'];
+
+        if (strpos($url, $upload_url) === 0) {
+            return str_replace($upload_url, $upload_path, $url);
+        }
+
+        return false;
+    }
+
+    /**
+     * Convert file path to URL
+     */
+    private function path_to_url($path) {
+        $upload_dir = wp_upload_dir();
+        $upload_url = $upload_dir['baseurl'];
+        $upload_path = $upload_dir['basedir'];
+
+        if (strpos($path, $upload_path) === 0) {
+            return str_replace($upload_path, $upload_url, $path);
+        }
+
+        return false;
+    }
+
+    /**
+     * Create WebP image
+     */
+    private function create_webp_image($source_path, $dest_path, $quality) {
+        if (!extension_loaded('gd') || !function_exists('imagewebp')) {
+            return false;
+        }
+
+        $image_info = getimagesize($source_path);
+        if (!$image_info) {
+            return false;
+        }
+
+        $source_image = null;
+        switch ($image_info[2]) {
+            case IMAGETYPE_JPEG:
+                $source_image = imagecreatefromjpeg($source_path);
+                break;
+            case IMAGETYPE_PNG:
+                $source_image = imagecreatefrompng($source_path);
+                break;
+            default:
+                return false;
+        }
+
+        if (!$source_image) {
+            return false;
+        }
+
+        // Ensure directory exists
+        $dest_dir = dirname($dest_path);
+        if (!file_exists($dest_dir)) {
+            wp_mkdir_p($dest_dir);
+        }
+
+        $result = imagewebp($source_image, $dest_path, $quality);
+        imagedestroy($source_image);
+
+        return $result;
+    }
+
+    /**
+     * Create AVIF image (placeholder - requires additional extension)
+     */
+    private function create_avif_image($source_path, $dest_path, $quality_settings) {
+        // AVIF creation would require additional libraries like libavif
+        // This is a placeholder for future implementation
+        return false;
+    }
+
+    /**
+     * Create optimized image with different quality
+     */
+    private function create_optimized_image($source_path, $dest_path, $quality_settings) {
+        if (!extension_loaded('gd')) {
+            return false;
+        }
+
+        $image_info = getimagesize($source_path);
+        if (!$image_info) {
+            return false;
+        }
+
+        $source_image = null;
+        switch ($image_info[2]) {
+            case IMAGETYPE_JPEG:
+                $source_image = imagecreatefromjpeg($source_path);
+                break;
+            case IMAGETYPE_PNG:
+                $source_image = imagecreatefrompng($source_path);
+                break;
+            default:
+                return false;
+        }
+
+        if (!$source_image) {
+            return false;
+        }
+
+        // Ensure directory exists
+        $dest_dir = dirname($dest_path);
+        if (!file_exists($dest_dir)) {
+            wp_mkdir_p($dest_dir);
+        }
+
+        $result = false;
+        switch ($image_info[2]) {
+            case IMAGETYPE_JPEG:
+                $result = imagejpeg($source_image, $dest_path, $quality_settings['jpeg_quality']);
+                break;
+            case IMAGETYPE_PNG:
+                $result = imagepng($source_image, $dest_path, $quality_settings['png_compression']);
+                break;
+        }
+
+        imagedestroy($source_image);
+        return $result;
+    }
 }

@@ -4,7 +4,8 @@
 jQuery(document).ready(function($) {
   console.log('Grid-Aware: Admin script loaded');
 
-  // Tab navigation is handled inline in the PHP
+  // Tab navigation functionality
+  initializeTabs();
 
   // Dynamic form field visibility logic
   $('select[name="grid_aware_optimize_images"]').on('change', function() {
@@ -70,6 +71,60 @@ jQuery(document).ready(function($) {
     setInterval(function() {
       updateDashboardWidget();
     }, 120000); // 2 minutes
+  }
+
+  /**
+   * Initialize tab functionality
+   */
+  function initializeTabs() {
+    // Handle tab clicks
+    $('.nav-tab-wrapper .nav-tab').on('click', function(e) {
+      console.log('Tab clicked:', $(this).attr('href'));
+      e.preventDefault();
+
+      var targetTab = $(this).attr('href');
+      // Remove the hash symbol to get the actual ID
+      var targetId = targetTab.replace('#', '');
+
+      // Remove active class from all tabs
+      $('.nav-tab').removeClass('nav-tab-active');
+
+      // Add active class to clicked tab
+      $(this).addClass('nav-tab-active');
+
+      // Hide all tab content
+      $('.tab-content').hide();
+
+      // Show target tab content using the ID without hash
+      $('#' + targetId).show();
+
+      // Update URL hash without scrolling
+      if (history.pushState) {
+        history.pushState(null, null, targetTab);
+      } else {
+        location.hash = targetTab;
+      }
+    });
+
+    // Handle initial tab from URL hash
+    var hash = window.location.hash;
+    if (hash && hash.length > 1) {
+      var targetId = hash.replace('#', '');
+      if ($('#' + targetId).length > 0) {
+        $('.nav-tab[href="' + hash + '"]').trigger('click');
+      }
+    }
+
+    // Handle browser back/forward with tabs
+    $(window).on('hashchange', function() {
+      var hash = window.location.hash;
+      if (hash && hash.length > 1) {
+        var targetId = hash.replace('#', '');
+        if ($('#' + targetId).length > 0) {
+          $('.nav-tab[href="' + hash + '"]').trigger('click');
+        }
+      }
+    });
   }
 });
 

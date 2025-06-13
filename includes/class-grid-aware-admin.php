@@ -796,9 +796,8 @@ class Grid_Aware_Admin {
         wp_enqueue_script(
             'grid-aware-admin',
             GRID_AWARE_URL . 'assets/js/admin.js',
-            array('jquery'),
-            GRID_AWARE_VERSION,
-            true
+            array(),
+            GRID_AWARE_VERSION
         );
 
         // Load Chart.js library for analytics page
@@ -925,11 +924,10 @@ class Grid_Aware_Admin {
         // API Settings
         register_setting('grid_aware_api_options', 'grid_aware_api_key');
         register_setting('grid_aware_api_options', 'grid_aware_zone');
-        register_setting('grid_aware_debug_options', 'grid_aware_force_mode');
-
-        // Basic Optimization Settings
+        register_setting('grid_aware_debug_options', 'grid_aware_force_mode');        // Basic Optimization Settings
         register_setting('grid_aware_options', 'grid_aware_optimize_images');
         register_setting('grid_aware_options', 'grid_aware_lazy_load');
+        register_setting('grid_aware_options', 'grid_aware_smart_image_serving');
         register_setting('grid_aware_options', 'grid_aware_defer_non_essential');
         register_setting('grid_aware_options', 'grid_aware_essential_scripts');
         register_setting('grid_aware_options', 'grid_aware_essential_styles');
@@ -954,13 +952,18 @@ class Grid_Aware_Admin {
             'Basic Optimization Settings',
             array($this, 'render_basic_section'),
             'grid_aware_options'
-        );
-
-        add_settings_section(
+        );        add_settings_section(
             'grid_aware_advanced_section',
             'Advanced Optimization Settings',
             array($this, 'render_advanced_section'),
             'grid_aware_advanced_options'
+        );
+
+        add_settings_section(
+            'grid_aware_debug_section',
+            'Debug & Preview Settings',
+            array($this, 'render_debug_section'),
+            'grid_aware_debug_options'
         );
 
         // API fields
@@ -987,12 +990,18 @@ class Grid_Aware_Admin {
             array($this, 'render_optimize_images_field'),
             'grid_aware_options',
             'grid_aware_basic_section'
-        );
-
-        add_settings_field(
+        );        add_settings_field(
             'grid_aware_lazy_load',
             'Lazy Load Images',
             array($this, 'render_lazy_load_field'),
+            'grid_aware_options',
+            'grid_aware_basic_section'
+        );
+
+        add_settings_field(
+            'grid_aware_smart_image_serving',
+            'Smart Image Serving',
+            array($this, 'render_smart_image_serving_field'),
             'grid_aware_options',
             'grid_aware_basic_section'
         );
@@ -1232,35 +1241,8 @@ class Grid_Aware_Admin {
                             });
                         });
                     });
-                </script>
-            </div>
+                </script>            </div>
         </div>
-
-        <script>
-            jQuery(document).ready(function($) {
-                // Simple tab navigation
-                $('.nav-tab').on('click', function(e) {
-                    e.preventDefault();
-
-                    // Update active tab
-                    $('.nav-tab').removeClass('nav-tab-active');
-                    $(this).addClass('nav-tab-active');
-
-                    // Show active content
-                    $('.tab-content').hide();
-                    $($(this).attr('href')).show();
-
-                    // Update URL hash
-                    window.location.hash = $(this).attr('href');
-                });
-
-                // Check if hash exists and activate corresponding tab
-                if (window.location.hash) {
-                    var hash = window.location.hash;
-                    $('.nav-tab[href="' + hash + '"]').trigger('click');
-                }
-            });
-        </script>
         <?php
     }
 
@@ -1273,9 +1255,7 @@ class Grid_Aware_Admin {
 
     public function render_basic_section() {
         echo '<p>Configure basic optimizations that will be applied in Eco and Super-Eco modes.</p>';
-    }
-
-    public function render_advanced_section() {
+    }    public function render_advanced_section() {
         echo '<p>Configure advanced optimizations for Super-Eco mode during high carbon intensity periods.</p>';
     }
 
@@ -1301,15 +1281,22 @@ class Grid_Aware_Admin {
         echo '<option value="no" ' . selected($optimize_images, 'no', false) . '>No</option>';
         echo '</select>';
         echo '<p class="description">Enable server-side image optimizations</p>';
-    }
-
-    public function render_lazy_load_field() {
+    }    public function render_lazy_load_field() {
         $lazy_load = get_option('grid_aware_lazy_load', 'yes');
         echo '<select name="grid_aware_lazy_load">';
         echo '<option value="yes" ' . selected($lazy_load, 'yes', false) . '>Yes</option>';
         echo '<option value="no" ' . selected($lazy_load, 'no', false) . '>No</option>';
         echo '</select>';
         echo '<p class="description">Add loading="lazy" attribute to images</p>';
+    }
+
+    public function render_smart_image_serving_field() {
+        $smart_serving = get_option('grid_aware_smart_image_serving', 'yes');
+        echo '<select name="grid_aware_smart_image_serving">';
+        echo '<option value="yes" ' . selected($smart_serving, 'yes', false) . '>Yes</option>';
+        echo '<option value="no" ' . selected($smart_serving, 'no', false) . '>No</option>';
+        echo '</select>';
+        echo '<p class="description">Automatically adjust image quality based on connection speed and carbon intensity. Uses WebP when supported and optimizes quality for slower connections or high-carbon periods.</p>';
     }
 
     public function render_defer_field() {
