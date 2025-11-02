@@ -10,9 +10,6 @@
       // Initialize Smart Image Serving
       initSmartImageServing();
 
-      // Add skip link to main content for keyboard users
-      addSkipLink();
-
       // Handle "Show Image" buttons in alt text boxes
       document.addEventListener('click', function(e) {
           if (e.target.classList.contains('grid-aware-show-image')) {
@@ -370,35 +367,5 @@
 
       // Update the live region text
       liveRegion.textContent = message;
-  }
-
-  // Add skip link for keyboard users
-  function addSkipLink() {
-      // Check if main content exists
-      const mainContent = document.querySelector('main, #content, #main, [role="main"]');
-
-      if (mainContent && !document.querySelector('.grid-aware-skip-link')) {
-          const skipLink = document.createElement('a');
-          skipLink.className = 'grid-aware-skip-link';
-          skipLink.href = '#';
-          skipLink.textContent = 'Skip to grid-aware content';
-
-          skipLink.addEventListener('click', function(e) {
-              e.preventDefault();
-
-              // Find the first grid-aware element
-              const firstGridAwareElement = document.querySelector('.grid-aware-alt-text-box, .grid-aware-video-placeholder');
-
-              if (firstGridAwareElement) {
-                  firstGridAwareElement.setAttribute('tabindex', '-1');
-                  firstGridAwareElement.focus();
-              } else {
-                  mainContent.setAttribute('tabindex', '-1');
-                  mainContent.focus();
-              }
-          });
-
-          document.body.insertBefore(skipLink, document.body.firstChild);
-      }
   }
 })();

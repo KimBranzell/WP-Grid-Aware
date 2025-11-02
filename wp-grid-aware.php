@@ -9,10 +9,6 @@
 // Exit if accessed directly
 if (!defined('ABSPATH')) exit;
 
-if (!session_id() && !headers_sent()) {
-    session_start();
-}
-
 // Define constants
 define('GRID_AWARE_VERSION', '1.0.0');
 define('GRID_AWARE_PATH', plugin_dir_path(__FILE__));
@@ -128,7 +124,7 @@ function grid_aware_enqueue_frontend_assets() {
         GRID_AWARE_URL . 'assets/js/connection-detector.js',
         array(),
         GRID_AWARE_VERSION,
-        false // Load in head to detect connection early
+        true // Load in head to detect connection early
     );
 
     // Enqueue frontend CSS
@@ -213,6 +209,16 @@ function grid_aware_admin_bar_menu($wp_admin_bar) {
     ));
 }
 add_action('admin_bar_menu', 'grid_aware_admin_bar_menu', 999);
+
+/**
+ * Properly close the session on shutdown if started by this plugin.
+ */
+function grid_aware_close_session() {
+    if (session_id()) {
+        session_write_close();
+    }
+}
+add_action('shutdown', 'grid_aware_close_session');
 
 /**
  * Handle test mode parameter

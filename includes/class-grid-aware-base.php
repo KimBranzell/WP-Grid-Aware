@@ -28,23 +28,8 @@ abstract class Grid_Aware_Base {
      * Constructor
      */
     protected function __construct() {
-        // Initialize session
-        add_action('init', array($this, 'init_session'), 1);
-
         // Determine current mode
         add_action('init', array($this, 'determine_current_mode'), 2);
-    }
-
-    /**
-     * Initialize session
-     */
-    public function init_session() {
-        if (!session_id() && !headers_sent()) {
-            session_start([
-                'cookie_lifetime' => 86400, // 24 hours
-                'read_and_close'  => false,  // We need write access
-            ]);
-        }
     }
 
     /**
